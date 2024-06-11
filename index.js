@@ -2,6 +2,8 @@ const express = require('express');
 
 const app = express();
 
+app.use(express.json()); //parsing Json Objects
+
 const drugs = [
     { id: 1, name: 'drug1' },
     { id: 2, name: 'drug2' },
@@ -30,7 +32,16 @@ app.get('/api/drugs/:id', (req, res) => {
     //res.send(req.query);
 
 })
-//app.post()
+
+app.post('/api/drugs', (req, res) => {
+    const drug = {
+        id: drugs.length + 1,
+        name: req.body.name
+    };
+
+    drugs.push(drug);
+    res.send(drug);
+});
 //app.put()
 //app.delete()
 
