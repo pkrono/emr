@@ -75,7 +75,7 @@ app.delete('/api/drugs/:id', (req, res) => {
     //check if exists
     const drug = drugs.find(c => c.id === parseInt(req.params.id));
     if (!drug) { 
-        return res.status(404).send('Drug with the given id not found!');
+        return res.status(404).send('Drug with the given id not found');
     }
 
     //Delete
