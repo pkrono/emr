@@ -52,7 +52,7 @@ app.get('/api/drugs', (req, res) =>  {
 app.get('/api/drugs/:id', authenticate, async (req, res) => {
     const drug_id = req.params.id
     try {
-        const drug_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE id = $1', [drug_id]);
+        const drug_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE id = $1 AND is_active = True', [drug_id]);
         if (drug_result.rowCount.length === 0) {
             return res.status(400).json({ message: 'Drug not found' });
         }
@@ -96,39 +96,63 @@ app.post('/api/drugs', authenticate, async (req, res) => {
     }
 });
 
-app.put('/api/drugs/:id', (req, res) => {
-    //check if exist
+/** 
+*@api {put} /api/drugs/:id Update drug information
+* @apiBody {Boolean} [is_active] Drug's activation status.
+* @apiBody {Number} [qoh] Quantity on hand of the drug.
+*/
+app.put('/api/drugs/:id', authenticate, async (req, res) => {
+    const drug_id = req.params.id;
+    const { is_active, qoh } = req.body;
 
-    const drug = drugs.find(c => c.id === parseInt(req.params.id));
-    if (!drug) { 
-        return res.status(404).send('Drug with the given id not found!');
-    }
-   
-    //Validate
-   const result = validateDrug(req.body)
-
-    if (result.error) {
-        return res.status(400).send(result.error.details[0].message);
+    if (is_active === undefined && qoh === undefined) {
+        return res.status(400).json({ message: 'No valid fields provided for update' });
     }
 
-    //Update drug
-    drug.name = req.body.name;
-    res.send(drug);
+    let updateQuery = '';
+    let updateValues = [];
+
+    if (is_active !== undefined) {
+        updateQuery = 'UPDATE drugs SET is_active = $1 WHERE id = $2';
+        updateValues = [is_active, drug_id];
+    } else if (qoh !== undefined) {
+        updateQuery = 'UPDATE drugs SET qoh = $1 WHERE id = $2';
+        updateValues = [qoh, drug_id];
+    }
+
+    try {
+        const result = await pool.query(updateQuery, updateValues);
+        if (result.rowCount === 0) {
+            return res.status(400).json({ message: 'Drug not found' });
+        }
+        res.json({ status: 'success', message: 'Drug updated successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
 });
 
-app.delete('/api/drugs/:id', (req, res) => {
-    //check if exists
-    const drug = drugs.find(c => c.id === parseInt(req.params.id));
-    if (!drug) { 
-        return res.status(404).send('Drug with the given id not found');
+/**
+ * @api {delete} /api/drugs/:id Delete a drug
+ */
+app.delete('/api/drugs/:id', authenticate, async (req, res) => {
+    const drug_id = req.params.id;
+
+    try {
+        // Execute the delete query
+        const result = await pool.query('DELETE FROM drugs WHERE id = $1', [drug_id]);
+        if (result.rowCount === 0) {
+            return res.status(400).json({ message: 'Drug not found' });
+        }
+        // Send success response
+        res.json({ status: 'success', message: 'Drug deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        // Send error response
+        res.status(500).json({ message: 'Internal Server Error' });
     }
-
-    //Delete
-    const index = drugs.indexOf(drug);
-    drugs.splice(index, 1);
-
-    res.send(drug)
 });
+
 
 function validateDrug(drug) { 
     const schema = Joi.object({
