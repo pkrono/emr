@@ -3,6 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const uuid = require('uuid');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
@@ -55,10 +56,12 @@ app.post('/api/users', authenticate, async (req, res) => {
             // If user already exists, return an error message
             return res.status(400).json({ message: 'User already exists' });
         }
+        const salt = await bcrypt.genSalt(10);
+        const hashed_pass = await bcrypt.hash(user.password, salt)
         await client.query('BEGIN');
         await client.query(
                 'INSERT INTO users (name, password,  email, role_id, create_date) VALUES ($1, $2, $3, $4, now())',
-                [user.name, user.password, user.email, user.role_id]
+                [user.name, hashed_pass, user.email, user.role_id]
             );
         await client.query('COMMIT');
         res.json({ status: 'success', message: 'User created Successfully' });
