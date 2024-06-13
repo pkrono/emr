@@ -11,6 +11,11 @@ const app = express();
 
 app.use(express.json()); //parsing Json Objects
 
+if (!process.env.PrivateKey) {
+    console.error('FATAL ERROR: jwtPrivateKey is not defined!');
+    process.exit(1);
+ }
+
 
 const pool = new Pool({
     user: process.env.DB_USER,
@@ -24,9 +29,20 @@ app.use(bodyParser.json());
 
 // Middleware for authentication (placeholder)
 const authenticate = (req, res, next) => {
-  // Implement your authentication logic here
-  next();
+    const token = req.header('x-auth-token')
+    if (!token) {
+        res.status(401).send('Access denied. No token provided');
+    }
+    try {
+        const decoded = jwt.verify(token, process.env.PrivateKey);
+        req.user = decoded;
+        next();
+    }
+    catch (ex) {
+        res.status(400).send('Invalid token.')
+    }
 };
+
 
 /**
  * @api {get} / Status Check
@@ -38,7 +54,7 @@ app.get('/', (req, resp) => {
 /**
  * @api {get} /api/users Register a new user
  */
-app.post('/api/users', authenticate, async (req, res) => {
+app.post('/api/users', async (req, res) => {
     const user = req.body;
     const { error } = validateUser(user);
     if (error) {
@@ -59,12 +75,49 @@ app.post('/api/users', authenticate, async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashed_pass = await bcrypt.hash(user.password, salt)
         await client.query('BEGIN');
-        await client.query(
+        const result = await client.query(
                 'INSERT INTO users (name, password,  email, role_id, create_date) VALUES ($1, $2, $3, $4, now())',
                 [user.name, hashed_pass, user.email, user.role_id]
             );
         await client.query('COMMIT');
-        res.json({ status: 'success', message: 'User created Successfully' });
+        const token = jwt.sign({_id: result.rows[0]}, process.env.PrivateKey,)
+        res.header('x-auth-token', token).json({ status: 'success', message: 'User created Successfully' });
+    }
+    catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+    finally {
+        client.release();
+    }
+});
+
+
+app.post('/api/auth/', async (req, res) => {
+    const user = req.body;
+    const { error } = validate(user);
+    if (error) {
+      return res.status(400).json(error.details[0].message);
+    }
+    const client = await pool.connect();
+
+    try {
+        const userCheckResult = await client.query(
+            'SELECT * FROM users WHERE email = $1',
+            [user.email]
+        );
+
+        if (userCheckResult.rows.length === 0) {
+            // If user already exists, return an error message
+            return res.status(400).json({ message: 'Invalid email or password.' });
+        }
+        const validPassword = await bcrypt.compare(req.body.password, userCheckResult.rows[0].password);
+        if (!validPassword) { 
+             return res.status(400).json({ message: 'Invalid email or password.' });
+        }
+        const token = jwt.sign({_id: userCheckResult.rows[0].id}, process.env.PrivateKey,)
+        res.json({ status: 'success', token: token });
     }
     catch (err) {
         await client.query('ROLLBACK');
@@ -202,6 +255,16 @@ app.delete('/api/drugs/:id', authenticate, async (req, res) => {
     }
 });
 
+
+function validate(user) {
+    const schema = Joi.object({
+        email: Joi.string().min(5).max(225).required().email(),
+        password: Joi.string().min(5).max(255).required(),
+    });
+
+    return schema.validate(user)
+
+}
 function validateUser(user) {
     const schema = Joi.object({
         name: Joi.string().min(3).max(225).required(),
