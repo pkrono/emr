@@ -1,13 +1,15 @@
 CREATE TABLE users (
-    id INT PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    password VARCHAR(1024) NOT NULL,
+    email VARCHAR(255) NOT NULL,
     role_id VARCHAR(50) NOT NULL,
-     create_date TIMESTAMP
+    create_date TIMESTAMP,
+    UNIQUE (email)
 );
 
 CREATE TABLE drugs (
-    id INT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     qoh INT,
@@ -17,7 +19,7 @@ CREATE TABLE drugs (
 );
 
 CREATE TABLE alternative_drug (
-    id INT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     drug_id INT REFERENCES drugs(id),
     alternative_id INT REFERENCES drugs(id),
     create_date TIMESTAMP,
@@ -25,17 +27,17 @@ CREATE TABLE alternative_drug (
 );
 
 CREATE TABLE drug_dispensations (
-    id UUID PRIMARY KEY,
-    drug_id UUID REFERENCES drugs(id),
-    patient_id UUID,
+    id SERIAL PRIMARY KEY,
+    drug_id INT REFERENCES drugs(id),
+    patient_id INT,
     quantity_dispensed INT,
-    dispensed_by UUID REFERENCES users(id),
+    dispensed_by INT REFERENCES users(id),
     dispensation_date TIMESTAMP
 );
 
 CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
     action TEXT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

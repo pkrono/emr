@@ -1,10 +1,9 @@
 const Joi = require('joi');
 const express = require('express');
-
-
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const uuid = require('uuid');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -28,20 +27,67 @@ const authenticate = (req, res, next) => {
   next();
 };
 
-const drugs = [
-    { id: 1, name: 'drug1' },
-    { id: 2, name: 'drug2' },
-    { id: 3, name: 'drug3' }
-];
-
+/**
+ * @api {get} / Status Check
+ */
 app.get('/', (req, resp) => {
     resp.send('OK')
 });
 
-//Get all drugs
-app.get('/api/drugs', (req, res) =>  { 
+/**
+ * @api {get} /api/users Register a new user
+ */
+app.post('/api/users', authenticate, async (req, res) => {
+    const user = req.body;
+    const { error } = validateUser(user);
+    if (error) {
+      return res.status(400).json(error.details[0].message);
+    }
+    const client = await pool.connect();
 
-    res.send(drugs);
+    try {
+        const userCheckResult = await client.query(
+            'SELECT * FROM users WHERE email = $1',
+            [user.email]
+        );
+
+        if (userCheckResult.rows.length > 0) {
+            // If user already exists, return an error message
+            return res.status(400).json({ message: 'User already exists' });
+        }
+        await client.query('BEGIN');
+        await client.query(
+                'INSERT INTO users (name, password,  email, role_id, create_date) VALUES ($1, $2, $3, $4, now())',
+                [user.name, user.password, user.email, user.role_id]
+            );
+        await client.query('COMMIT');
+        res.json({ status: 'success', message: 'User created Successfully' });
+    }
+    catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+    finally {
+        client.release();
+    }
+});
+
+
+/**
+ * @api {get} /api/drugs Get all active drugs
+ */
+app.get('/api/drugs', authenticate, async (req, res) => {
+    try {
+        const active_drugs_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE is_active = True');
+        if (active_drugs_result.rowCount === 0) {
+            return res.status(404).json({ message: 'No active drugs found' });
+        }
+        res.json(active_drugs_result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
 });
 
 /**
@@ -153,6 +199,17 @@ app.delete('/api/drugs/:id', authenticate, async (req, res) => {
     }
 });
 
+function validateUser(user) {
+    const schema = Joi.object({
+        name: Joi.string().min(3).max(225).required(),
+        email: Joi.string().min(5).max(225).required().email(),
+        password: Joi.string().min(5).max(255).required(),
+        role_id: Joi.number()
+    });
+
+    return schema.validate(user)
+
+}
 
 function validateDrug(drug) { 
     const schema = Joi.object({
