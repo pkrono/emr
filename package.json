@@ -1,5 +1,5 @@
 {
-  "name": "emr",
+  "name": "emr_new",
   "version": "1.0.0",
   "description": "EMR system is a billing and inventory management",
   "main": "index.js",
