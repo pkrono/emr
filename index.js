@@ -1,8 +1,32 @@
 const Joi = require('joi');
 const express = require('express');
+
+
+const bodyParser = require('body-parser');
+const { Pool } = require('pg');
+const uuid = require('uuid');
+require('dotenv').config();
+
 const app = express();
 
 app.use(express.json()); //parsing Json Objects
+
+
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT,
+});
+
+app.use(bodyParser.json());
+
+// Middleware for authentication (placeholder)
+const authenticate = (req, res, next) => {
+  // Implement your authentication logic here
+  next();
+};
 
 const drugs = [
     { id: 1, name: 'drug1' },
@@ -20,35 +44,56 @@ app.get('/api/drugs', (req, res) =>  {
     res.send(drugs);
 });
 
-//Get drug with given id
-app.get('/api/drugs/:id', (req, res) => {
+/**
+ *@apiDescription This endpoint retrieves the details of a specific drug identified by its ID, 
+ * including its name, quantity on hand (QoH), and a list of alternative drugs. The user must be 
+ * authenticated to access this endpoint.
+ */
+app.get('/api/drugs/:id', authenticate, async (req, res) => {
+    const drug_id = req.params.id
+    try {
+        const drug_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE id = $1', [drug_id]);
+        if (drug_result.rowCount.length === 0) {
+            return res.status(400).json({ message: 'Drug not found' });
+        }
 
-    //res.send({ 'id': req.params.id });
-    const drug = drugs.find(c => c.id === parseInt(req.params.id));
-    if (!drug) {
-        return res.status(404).send('drug with given id not found');
+        const altenatives = await pool.query(
+            'SELECT d.id, d.name, d.qoh FROM alternative_drug ad JOIN drugs d ON ad.alternative_id = d.id WHERE ad.drug_id = $1',
+            [drug_id]);
+        res.json({
+            drug: drug_result.rows[0],
+            altenatives: altenatives.rows[0],
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Sever Error' });
     }
-    res.send(drug);
-    //res.send(req.query);
+});
 
-})
+app.post('/api/drugs', authenticate, async (req, res) => {
+    const drugs = req.body;
+    const result = validateDrug(drugs);
+    const client = await pool.connect();
 
-app.post('/api/drugs', (req, res) => {
-
-    const result = validateDrug(req.body);
-
-    if (result.error) {
-        //http status code 400-Bad request
-        return res.status(400).send(result.error.details[0].message);
+    try {
+        await client.query('BEGIN');
+        for (const drug of drugs) {
+            await client.query(
+                'INSERT INTO drugs (name, description, qoh, create_date, create_uid) VALUES ($1, $2, $3, now(), 1)',
+                [drug.name, drug.description, drug.qoh]
+            );
+        }
+        await client.query('COMMIT');
+        res.json({ status: 'success', message: 'Drugs created Successfully' });
     }
-
-    const drug = {
-        id: drugs.length + 1,
-        name: req.body.name
-    };
-
-    drugs.push(drug);
-    res.send(drug);
+    catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+    finally {
+        client.release();
+    }
 });
 
 app.put('/api/drugs/:id', (req, res) => {
