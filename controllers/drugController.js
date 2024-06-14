@@ -3,7 +3,7 @@ const { validateDrug } = require('../models/validation');
 
 exports.getAllDrugs = async (req, res) => {
     try {
-        const active_drugs_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE is_active = True');
+        const active_drugs_result = await pool.query('SELECT id, name, qoh, reorder_level FROM drugs WHERE is_active = True');
         if (active_drugs_result.rowCount === 0) {
             return res.status(404).json({ message: 'No active drugs found' });
         }
@@ -17,12 +17,12 @@ exports.getAllDrugs = async (req, res) => {
 exports.getDrugById = async (req, res) => {
     const drug_id = req.params.id;
     try {
-        const drug_result = await pool.query('SELECT id, name, qoh FROM drugs WHERE id = $1 AND is_active = True', [drug_id]);
+        const drug_result = await pool.query('SELECT id, name, qoh, reorder_level FROM drugs WHERE id = $1 AND is_active = True', [drug_id]);
         if (drug_result.rowCount.length === 0) {
             return res.status(400).json({ message: 'Drug not found' });
         }
         const alternatives = await pool.query(
-            'SELECT d.id, d.name, d.qoh FROM alternative_drug ad JOIN drugs d ON ad.alternative_id = d.id WHERE ad.drug_id = $1',
+            'SELECT d.id, d.name, d.qoh, d.reorder_level FROM alternative_drug ad JOIN drugs d ON ad.alternative_id = d.id WHERE ad.drug_id = $1',
             [drug_id]
         );
         res.json({
@@ -44,8 +44,8 @@ exports.createDrugs = async (req, res) => {
         await client.query('BEGIN');
         for (const drug of drugs) {
             await client.query(
-                'INSERT INTO drugs (name, description, qoh, create_date, create_uid) VALUES ($1, $2, $3, now(), 1)',
-                [drug.name, drug.description, drug.qoh]
+                'INSERT INTO drugs (name, description, qoh, reorder_level, create_date, create_uid) VALUES ($1, $2, $3, $4, now(), 1)',
+                [drug.name, drug.description, drug.qoh, drug.reorder_level]
             );
         }
         await client.query('COMMIT');

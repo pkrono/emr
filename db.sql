@@ -13,10 +13,11 @@ CREATE TABLE drugs (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     qoh INT,
+    reorder_level INT,
     is_active BOOLEAN DEFAULT TRUE,
     unit_price FLOAT,
     create_date TIMESTAMP,
-    create_uid INT REFERENCES users(id)
+    create_uid INT
 );
 
 CREATE TABLE alternative_drug (

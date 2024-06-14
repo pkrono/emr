@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { validateCheckout } = require('../models/validation');
+const { sendReplenishmentEmail } = require('../services/emailService');
 
 exports.checkout = async (req, res) => {
     const checkoutData = req.body;
@@ -12,18 +13,34 @@ exports.checkout = async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Example: deduct stock from inventory
         for (const item of checkoutData.items) {
-            const result = await client.query(
-                'UPDATE drugs SET qoh = qoh - $1 WHERE id = $2 AND qoh >= $1 and is_active = True RETURNING id',
-                [item.qty, item.drug_id]
+            const drugResult = await client.query(
+                'SELECT name, qoh, reorder_level FROM drugs WHERE id = $1',
+                [item.drug_id]
             );
-            if (result.rowCount === 0) {
-                throw new Error(`Insufficient stock for drug id ${item.drug_id}`);
+            const drug = drugResult.rows[0];
+
+            if (!drug) {
+                throw new Error(`No Drug with ID ${item.drug_id}`);
+            }
+            const newQoh = drug.qoh - item.qty;
+
+            if (newQoh < 0) {
+                throw new Error(`Insufficient stock for drug ID ${item.drug_id}`);
+            }
+
+            const updateResult = await client.query(
+                'UPDATE drugs SET qoh = $1 WHERE id = $2 AND is_active = True RETURNING id, qoh, reorder_level, name',
+                [newQoh, item.drug_id]
+            );
+
+            const updatedDrug = updateResult.rows[0];
+
+            if (updatedDrug.qoh <= updatedDrug.reorder_level) {
+                await sendReplenishmentEmail(updatedDrug);
             }
         }
 
-        // Example: create order record
         const result = await client.query(
             'INSERT INTO prescription (dispensed_by, patient_id, total_amount, create_date) VALUES ($1, $2, $3, now()) RETURNING id',
             [checkoutData.user_id, checkoutData.patient_id, checkoutData.total_amount]
@@ -31,7 +48,6 @@ exports.checkout = async (req, res) => {
 
         const prescription_id = result.rows[0].id;
 
-        // Example: insert order items
         for (const item of checkoutData.items) {
             await client.query(
                 'INSERT INTO prescription_item (prescription_id, drug_id, qty, unit_price,create_date) VALUES ($1, $2, $3, $4,now())',
