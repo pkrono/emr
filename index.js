@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const drugRoutes = require('./routes/drugs');
+const checkoutRoutes = require('./routes/checkout');
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(bodyParser.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/drugs', drugRoutes);
+app.use('/api/checkout', checkoutRoutes);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => console.log(`Listening on port ${port}...`));

@@ -28,8 +28,25 @@ function validateDrug(drug) {
     return schema.validate(drug);
 }
 
+function validateCheckout(data) {
+    const schema = Joi.object({
+        user_id: Joi.number().required(),
+        total_amount: Joi.number().required(),
+        items: Joi.array().items(
+            Joi.object({
+                drug_id: Joi.number().required(),
+                qty: Joi.number().required(),
+                price: Joi.number().required(),
+            })
+        ).required(),
+    });
+
+    return schema.validate(data);
+}
+
 module.exports = {
     validate,
     validateUser,
     validateDrug,
+    validateCheckout,
 };
